@@ -1,0 +1,531 @@
+<title>Self-regulation Simulator</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: lab-bench split — behaviour tabs on top; model diagram, run controls and results on the left; the quality dial board on the right */
+:root{
+  --bg:#f2f3f7; --surface:#ffffff; --panel:#e3e6ee; --ink:#161a26; --muted:#5a6175; --line:#c3c8d5;
+  --accent:#2b44c4; --accent-soft:#dfe4fb; --pass:#1d8556; --pass-soft:#dcf1e6; --fail:#c0402c; --fail-soft:#f8e1dc;
+  --neg:#4f5568; --pos:#5fb38a;
+  --display:"Bricolage Grotesque",ui-sans-serif,system-ui,sans-serif;
+  --body:"IBM Plex Sans",ui-sans-serif,system-ui,sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,Menlo,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0f121a; --surface:#181c27; --panel:#141824; --ink:#e7e9f1; --muted:#9aa1b5; --line:#384053;
+  --accent:#8a9cff; --accent-soft:#252d52; --pass:#4cc48d; --pass-soft:#16362a; --fail:#f07a63; --fail-soft:#40211c;
+  --neg:#8a90a6; --pos:#4cc48d; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0f121a; --surface:#181c27; --panel:#141824; --ink:#e7e9f1; --muted:#9aa1b5; --line:#384053;
+  --accent:#8a9cff; --accent-soft:#252d52; --pass:#4cc48d; --pass-soft:#16362a; --fail:#f07a63; --fail-soft:#40211c;
+  --neg:#8a90a6; --pos:#4cc48d; color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--body);font-size:15px;line-height:1.5;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:24px 48px}
+.wrap{max-width:1320px;margin:0 auto;display:flex;flex-direction:column;gap:20px}
+h1{font-family:var(--display);font-weight:700;font-size:clamp(26px,3.4vw,38px);line-height:1.1;margin:0;text-wrap:balance;letter-spacing:-.01em}
+.lede{color:var(--muted);margin:6px 0 0;max-width:75ch}
+h2{font-family:var(--display);font-weight:500;font-size:19px;margin:0}
+.eyebrow{font-size:11.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:600}
+.grid{display:grid;grid-template-columns:minmax(0,1fr) 400px;gap:20px;align-items:start}
+@media (max-width:1000px){.grid{grid-template-columns:minmax(0,1fr)}}
+.col{display:flex;flex-direction:column;gap:16px;min-width:0}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:16px;display:flex;flex-direction:column;gap:12px;min-width:0}
+.small{font-size:12.5px;color:var(--muted);margin:0}
+/* behaviour bar */
+.tabs{display:flex;flex-wrap:wrap;gap:8px}
+.tab{display:flex;flex-direction:column;align-items:flex-start;gap:1px;text-align:left;border:1.5px solid var(--line);background:var(--bg);border-radius:8px;padding:7px 12px;max-width:100%}
+.tab .k{font:600 10.5px var(--body);letter-spacing:.07em;text-transform:uppercase;color:var(--muted)}
+.tab .t{font-weight:600;font-size:14px;overflow-wrap:anywhere}
+.tab[aria-selected="true"]{border-color:var(--accent);background:var(--accent-soft)}
+.tab .st{font:500 11px var(--mono);color:var(--muted)}
+.behrow{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.behrow input[type=text]{flex:1 1 260px;min-width:0;font:500 14px var(--body);padding:7px 10px;border:1px solid var(--line);border-radius:6px;background:var(--surface);color:var(--ink)}
+/* diagram */
+.diagram{background:var(--panel);border:1.5px dashed var(--line);border-radius:12px;padding:10px;overflow-x:auto}
+.diagram svg{display:block;width:100%;min-width:640px;height:auto}
+.frame{fill:none;stroke:var(--line);stroke-width:1.2}
+.node{cursor:pointer}
+.node rect.box{fill:var(--surface);stroke:var(--ink);stroke-width:1.4;transition:fill .25s,stroke .25s}
+.node:hover rect.box{stroke:var(--accent)}
+.node text.lbl{font-family:var(--body);font-weight:600;font-size:14.5px;fill:var(--ink)}
+.node text.val{font-family:var(--mono);font-size:12px;fill:var(--muted)}
+.node circle.dot{fill:var(--pass)}
+.node.low circle.dot{fill:var(--fail)}
+.node.pass rect.box{fill:var(--pass-soft);stroke:var(--pass);stroke-width:2.4}
+.node.fail rect.box{fill:var(--fail-soft);stroke:var(--fail);stroke-width:2.4}
+.node.now rect.box{stroke-width:3.6}
+.node.idle{opacity:.45}
+.arr{fill:none;stroke:var(--ink);stroke-width:2.2;opacity:.55;transition:stroke .2s,opacity .2s}
+.arr.lit{stroke:var(--accent);opacity:1;stroke-width:3.2}
+#mk path{fill:var(--ink);opacity:.7}
+#mkl path{fill:var(--accent)}
+/* status + toolbar */
+.status{display:flex;gap:12px;align-items:flex-start;padding:12px 14px;border-radius:8px;background:var(--accent-soft);min-height:66px}
+.status.fail{background:var(--fail-soft)} .status.pass{background:var(--pass-soft)}
+.status b{font-family:var(--display);font-weight:700;font-size:16px;display:block}
+.status p{margin:2px 0 0;max-width:78ch}
+.toolbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+button{font:600 14px var(--body);border-radius:7px;border:1.5px solid var(--ink);background:var(--surface);color:var(--ink);padding:8px 14px;cursor:pointer}
+button.primary{background:var(--accent);border-color:var(--accent);color:var(--surface)}
+button.ghost{border-color:var(--line);font-weight:500;font-size:13px;padding:6px 11px}
+button:hover{filter:brightness(1.06)}
+button:focus-visible,input:focus-visible,select:focus-visible,.node:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+button:disabled{opacity:.45;cursor:default}
+.speed{display:flex;align-items:center;gap:6px;color:var(--muted);font-size:13px;margin-left:auto}
+.presets{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+/* results */
+.two{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.5fr);gap:16px}
+@media (max-width:700px){.two{grid-template-columns:minmax(0,1fr)}}
+.bars{display:flex;gap:28px;justify-content:center;flex-wrap:wrap}
+.bar-set{display:flex;flex-direction:column;align-items:center;gap:4px}
+.bar-plot{height:120px;display:flex;align-items:flex-end;gap:10px;border-left:2px solid var(--ink);border-bottom:2px solid var(--ink);padding:0 10px}
+.bar{width:40px;border:1.5px solid var(--ink);border-bottom:none;transition:height .4s;position:relative}
+.bar.neg{background:var(--neg)} .bar.pos{background:var(--pos)}
+.bar span{position:absolute;top:-19px;left:50%;transform:translateX(-50%);font:500 11.5px var(--mono);color:var(--ink)}
+.bar-x{display:flex;gap:10px;padding-left:12px;font-size:11.5px;color:var(--muted)} .bar-x div{width:40px;text-align:center}
+.legend{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:12.5px;color:var(--muted)}
+.legend i{display:inline-block;width:14px;height:3px;border-radius:2px;margin-right:5px;vertical-align:middle}
+.legend b{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:5px;vertical-align:middle}
+#chart{width:100%;height:auto;display:block}
+#chart .ax{stroke:var(--line);stroke-width:1}
+#chart text{font:11px var(--mono);fill:var(--muted)}
+.log{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:4px;max-height:240px;overflow:auto;font-size:13px}
+.log li{display:grid;grid-template-columns:62px minmax(0,1fr);gap:8px;padding:6px 8px;border-radius:6px;background:var(--bg)}
+.log li .n{font-family:var(--mono);color:var(--muted);font-variant-numeric:tabular-nums}
+.tag{font:600 11px var(--body);padding:1px 7px;border-radius:99px;margin-right:4px}
+.tag.ok{background:var(--pass-soft);color:var(--pass)} .tag.no{background:var(--fail-soft);color:var(--fail)}
+details summary{cursor:pointer;font-weight:600}
+details p,details li{font-size:13.5px;color:var(--muted);max-width:75ch}
+code{font-family:var(--mono);font-size:12.5px}
+/* controls */
+.ctl-head{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
+select{font:500 14px var(--body);padding:5px 8px;border-radius:6px;border:1px solid var(--line);background:var(--surface);color:var(--ink)}
+.group{display:flex;flex-direction:column;gap:2px;border-top:1px solid var(--line);padding-top:10px}
+.concept{display:flex;flex-direction:column;gap:3px;padding:8px 6px;margin:0 -6px;border-radius:8px;transition:background .4s}
+.concept.flash{background:var(--accent-soft)}
+.concept .top{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.concept .name{font-weight:600;font-size:14px}
+.concept .desc{font-size:12.5px;color:var(--muted);margin:0}
+.pill{font:500 11.5px var(--mono);padding:1px 8px;border-radius:99px;white-space:nowrap}
+.pill.ok{background:var(--pass-soft);color:var(--pass)} .pill.no{background:var(--fail-soft);color:var(--fail)}
+.row{display:grid;grid-template-columns:70px minmax(0,1fr) 38px;align-items:center;gap:8px;font-size:12.5px;color:var(--muted)}
+.row output{font:500 13px var(--mono);color:var(--ink);text-align:right;font-variant-numeric:tabular-nums}
+.anchors{display:flex;justify-content:space-between;gap:8px;font-size:11.5px;color:var(--muted);margin-left:78px;margin-right:46px}
+input[type=range]{width:100%;accent-color:var(--accent)}
+.row.th input{accent-color:var(--fail)}
+.check{display:flex;gap:8px;align-items:center;font-size:13px;color:var(--ink)}
+.fixed{font:500 12px var(--mono);color:var(--muted);margin-left:78px}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+
+<div class="wrap">
+  <header>
+    <div class="eyebrow">Interactive model</div>
+    <h1>Self-regulation Simulator</h1>
+    <p class="lede">Each construct processes information and, when the <strong>quality</strong> of its state passes its <strong>threshold</strong>, activates the next one. The quality can be induced by an intervention, an experience, new information or a new interpretation. When any threshold is not passed, the process stops and nothing new is learned. Only when every step works do the expected outcomes shift, and the shift is largest when all elements are optimal.</p>
+  </header>
+
+  <div class="card">
+    <div class="ctl-head"><div class="eyebrow">Behaviour being regulated</div>
+      <span class="small">The cycle runs separately for the primary behaviour and for each self-control behaviour that supports it.</span></div>
+    <div class="tabs" id="tabs" role="tablist"></div>
+    <div class="behrow">
+      <label for="bname" class="small">Name</label>
+      <input type="text" id="bname" maxlength="80">
+      <button class="ghost" id="bAdd">Add self-control behaviour</button>
+      <button class="ghost" id="bDel">Remove this behaviour</button>
+    </div>
+  </div>
+
+  <div class="grid">
+    <div class="col">
+      <div class="diagram">
+        <svg viewBox="0 0 1000 480" role="img" aria-label="Self-regulation model diagram. Select a construct to jump to its quality control." id="svg">
+          <defs>
+            <marker id="mk" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="11" markerHeight="11" markerUnits="userSpaceOnUse" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z"/></marker>
+            <marker id="mkl" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="13" markerHeight="13" markerUnits="userSpaceOnUse" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z"/></marker>
+          </defs>
+          <rect class="frame" x="40" y="30" width="390" height="92" rx="10"/>
+          <rect class="frame" x="450" y="30" width="520" height="92" rx="10"/>
+          <rect class="frame" x="30" y="163" width="420" height="164" rx="10"/>
+          <rect class="frame" x="180" y="373" width="790" height="94" rx="10"/>
+          <g id="arrows"></g>
+          <g id="nodes"></g>
+        </svg>
+      </div>
+
+      <div class="card">
+        <div id="status" class="status"><div><b>Ready</b><p>Press <em>Step</em> to go through one construct at a time, or <em>Run cycle</em> to watch a full pass. Select a box in the diagram to jump to its quality setting.</p></div></div>
+        <div class="toolbar">
+          <button id="bStep">Step</button>
+          <button id="bCycle" class="primary">Run cycle</button>
+          <button id="bTen">Run 10 cycles</button>
+          <button id="bReset">Reset run</button>
+          <label class="speed" for="speed">Speed <input type="range" id="speed" min="150" max="1400" step="50" value="650" style="width:90px;direction:rtl"></label>
+        </div>
+        <div class="presets">
+          <span class="eyebrow" style="margin-right:4px">Scenarios</span>
+          <button class="ghost" data-preset="optimal">All optimal</button>
+          <button class="ghost" data-preset="barely">All just above threshold</button>
+          <button class="ghost" data-preset="defensive">Defensive reaction</button>
+          <button class="ghost" data-preset="noplan">Motivated, no plan</button>
+          <button class="ghost" data-preset="nomon">Not monitored</button>
+          <button class="ghost" data-preset="shallow">Shallow evaluation</button>
+        </div>
+      </div>
+
+      <div class="two">
+        <div class="card">
+          <h2>Expected outcomes</h2>
+          <div class="bars">
+            <div class="bar-set"><div class="eyebrow">At start</div>
+              <div class="bar-plot"><div class="bar neg" id="b0n"><span></span></div><div class="bar pos" id="b0p"><span></span></div></div>
+              <div class="bar-x"><div>neg.</div><div>pos.</div></div></div>
+            <div class="bar-set"><div class="eyebrow">Now</div>
+              <div class="bar-plot"><div class="bar neg" id="b1n"><span></span></div><div class="bar pos" id="b1p"><span></span></div></div>
+              <div class="bar-x"><div>neg.</div><div>pos.</div></div></div>
+          </div>
+          <p class="small">Expected negative and positive outcomes of the new behaviour: the determinants of behaviour, and the outcome of each cycle.</p>
+        </div>
+        <div class="card">
+          <h2>Across cycles</h2>
+          <svg id="chart" viewBox="0 0 520 200"></svg>
+          <div class="legend">
+            <span><i style="background:var(--pos)"></i>Expected positive</span>
+            <span><i style="background:var(--neg)"></i>Expected negative</span>
+            <span><b style="background:var(--pass)"></b>Cycle completed</span>
+            <span><b style="background:var(--fail)"></b>Cycle stopped</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Cycle log</h2>
+        <ul class="log" id="log"></ul>
+      </div>
+
+      <div class="card">
+        <details>
+          <summary>How the simulation calculates</summary>
+          <ul>
+            <li>Each construct passes when its quality is at or above its threshold. The constructs are checked in order: value, perceived behavioural outcome, discrepancy, problem solving, motivation, goal setting, planning, implementation intention formation, behavioural engagement, monitoring, evaluation, learning.</li>
+            <li>At the first construct that does not pass, the cycle stops. The expected outcomes do not change.</li>
+            <li>When all twelve pass, the overall quality <code>Q</code> is the average of all qualities on a 0–100% scale (1 on the scale = 0%, the top of the scale = 100%). The learning strength is <code>40% × Q²</code>. Squaring makes optimal elements matter: with all qualities at the top, 40% of the remaining room is learned per cycle; with all just above the threshold, about 10%.</li>
+            <li>Expected positive outcomes move up by the learning strength times the room left to 100%; expected negative outcomes move down by the learning strength times their current level.</li>
+            <li>Thresholds are treated as fixed properties of the constructs. You can unlock them for simulation purposes; they apply to every behaviour.</li>
+          </ul>
+        </details>
+      </div>
+    </div>
+
+    <div class="col">
+      <div class="card" id="controls">
+        <div class="ctl-head">
+          <h2>Quality of each construct</h2>
+          <label class="check" for="scale">Scale
+            <select id="scale"><option value="3">1–3</option><option value="5">1–5</option><option value="10">1–10</option></select>
+          </label>
+        </div>
+        <label class="check" for="unlock"><input type="checkbox" id="unlock"> Allow threshold changes (simulation only)</label>
+        <div id="ctls"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const $=id=>document.getElementById(id);
+const C=[
+  {id:'value',name:'Value',group:'Value violation',lo:'unimportant',hi:'very important',
+   desc:'Importance of the value: health, or preserving physical, social and psychological integrity.',
+   pass:'The value is important enough to be violated.',
+   fail:'The value is not important enough. The outcome of the behaviour cannot violate it.'},
+  {id:'perc',name:'Perceived behavioural outcome',group:'Value violation',lo:'no danger seen',hi:'strong danger',
+   desc:'Strength of the negative outcome, risk or danger caused by one’s current behaviour.',
+   pass:'The danger is strong enough to violate the value.',
+   fail:'The danger of the current behaviour is not perceived as strong enough to violate the value.'},
+  {id:'disc',name:'Discrepancy',group:'Value violation',lo:'defensive',hi:'open',
+   desc:'How openly the negative emotions of the value violation are experienced, versus down-regulated.',
+   pass:'The negative emotions are experienced openly. Problem solving starts.',
+   fail:'Defensive emotion regulation. The negative emotions are down-regulated, which blocks problem solving and preserves the current behaviour.'},
+  {id:'ps',name:'Problem solving',group:'Choosing an option',lo:'superficial',hi:'thorough',
+   desc:'Thoroughness of searching and weighing the options, including the feasibility and effectiveness of each.',
+   pass:'Options are identified and weighed. One specific option comes out on top.',
+   fail:'The search is too superficial. Options are missed or not weighed, so no clear best option emerges.'},
+  {id:'mot',name:'Motivation',group:'Choosing an option',lo:'unclear benefit',hi:'clear benefit',
+   desc:'Net benefit of the chosen option over the others: response efficacy and self-efficacy, balanced against the investment needed.',
+   pass:'The chosen option clearly beats the alternatives.',
+   fail:'The net benefit of the chosen option is not clear enough compared with the other options.'},
+  {id:'gs',name:'Goal setting',group:'Preparing action',lo:'vague, imposed',hi:'clear, owned',
+   desc:'Clarity of the goal, and how far it is personally embraced.',
+   pass:'The goal is clear and personally embraced.',
+   fail:'The goal is unclear or not personally embraced.'},
+  {id:'plan',name:'Planning',group:'Preparing action',lo:'uncoordinated',hi:'fits the week',
+   desc:'How well the regular new behaviour is coordinated with other activities on different days of the week.',
+   pass:'The new behaviour fits into the week.',
+   fail:'The new behaviour is not coordinated with the rest of the week.'},
+  {id:'ii',name:'Implementation intention formation',group:'Preparing action',lo:'vague',hi:'specific if–then',
+   desc:'How specifically the action is formulated, and when it is triggered or must take place.',
+   pass:'A specific action is tied to a clear moment or trigger.',
+   fail:'The action is not specific enough, or there is no clear moment or trigger.'},
+  {id:'eng',name:'Behavioural engagement',group:'Acting and learning',lo:'not done',hi:'as set in goal',
+   desc:'How far the behaviour is executed as set in the goal. Walking 3 × 30 minutes when that was the goal is optimal.',
+   pass:'The behaviour is executed according to the goal.',
+   fail:'The behaviour is not executed according to the goal.'},
+  {id:'mon',name:'Monitoring',group:'Acting and learning',lo:'unnoticed',hi:'recorded',
+   desc:'How far the accomplishments are noticed or recorded, with or without a monitoring instrument.',
+   pass:'The accomplishments are noticed.',
+   fail:'The accomplishments are not noticed or recorded.'},
+  {id:'eval',name:'Evaluation',group:'Acting and learning',lo:'narrow',hi:'complete',
+   desc:'Completeness of the evaluation: the physical outcomes, but also other noticed outcomes, circumstances and influences.',
+   pass:'The evaluation covers the relevant outcomes and circumstances.',
+   fail:'The evaluation is too incomplete to draw lessons from.'},
+  {id:'learn',name:'Learning',group:'Acting and learning',lo:'nothing taken away',hi:'consolidated',
+   desc:'How far the four lessons (positive outcomes, negative outcomes, perceived control, behaviour change in one’s life) are identified, combined with foreknowledge and turned into motivating lessons.',
+   pass:'The lessons are identified and consolidated into motivating lessons.',
+   fail:'The lessons are not identified or not turned into motivating lessons.'},
+];
+const IDS=C.map(c=>c.id), byId=Object.fromEntries(C.map(c=>[c.id,c]));
+const NODES={
+  ps:{x:140,y:76,w:150,l:['Problem solving']}, mot:{x:335,y:76,w:140,l:['Motivation']},
+  gs:{x:530,y:76,w:120,l:['Goal setting']}, plan:{x:680,y:76,w:120,l:['Planning']},
+  ii:{x:862,y:76,w:206,l:['Implementation intention','formation'],h:62},
+  value:{x:135,y:200,w:170,l:['Value']}, disc:{x:350,y:245,w:150,l:['Discrepancy']},
+  perc:{x:155,y:291,w:230,l:['Perceived behavioural','outcome'],h:64},
+  learn:{x:270,y:420,w:130,l:['Learning']}, eval:{x:450,y:420,w:130,l:['Evaluation']},
+  mon:{x:630,y:420,w:140,l:['Monitoring']}, eng:{x:845,y:420,w:210,l:['Behavioural engagement']},
+};
+const ARROWS={
+  vp:['M110 228 V254',true], vd:['M122 245 H271'], dps:['M320 220 V150 H140 V105'],
+  psmot:['M215 76 H261'], motgs:['M405 76 H466'], gsplan:['M590 76 H616'], planii:['M740 76 H755'],
+  iieng:['M880 107 V391'], engmon:['M740 420 H704'], monev:['M560 420 H519'], evle:['M385 420 H339'], lep:['M250 395 V327'],
+};
+const INTO={value:['vp'],perc:['vp'],disc:['vd'],ps:['dps'],mot:['psmot'],gs:['motgs'],plan:['gsplan'],ii:['planii'],eng:['iieng'],mon:['engmon'],eval:['monev'],learn:['evle']};
+
+/* qualities in normalised form (0 = bottom of scale, 1 = top) */
+const PRESETS={
+  optimal:  Object.fromEntries(IDS.map(i=>[i,1])),
+  barely:   Object.fromEntries(IDS.map(i=>[i,'t+'])),
+  defensive:{value:1,perc:.9,disc:.2,ps:.7,mot:.7,gs:.7,plan:.7,ii:.7,eng:.7,mon:.7,eval:.7,learn:.7},
+  noplan:   {value:.9,perc:.8,disc:.8,ps:.8,mot:.9,gs:.8,plan:.25,ii:.2,eng:.6,mon:.7,eval:.7,learn:.7},
+  nomon:    {value:.9,perc:.8,disc:.8,ps:.8,mot:.8,gs:.8,plan:.8,ii:.8,eng:.9,mon:.2,eval:.7,learn:.7},
+  shallow:  {value:.9,perc:.8,disc:.8,ps:.8,mot:.8,gs:.8,plan:.8,ii:.8,eng:.9,mon:.8,eval:.25,learn:.7},
+};
+const START_PRIMARY={value:.9,perc:.75,disc:.6,ps:.6,mot:.65,gs:.75,plan:.55,ii:.6,eng:.65,mon:.55,eval:.5,learn:.6};
+const START_SC={value:.85,perc:.7,disc:.75,ps:.65,mot:.7,gs:.7,plan:.6,ii:.8,eng:.7,mon:.3,eval:.6,learn:.6};
+
+const G={max:5,th:Object.fromEntries(IDS.map(i=>[i,3])),unlock:false};
+let B=[], cur=0, run=null, timer=null;
+
+const step=()=>G.max<=5?0.5:1;
+const fromN=n=>Math.min(G.max,Math.max(1,Math.round((1+n*(G.max-1))/step())*step()));
+const nrm=q=>(q-1)/(G.max-1);
+const f=x=>(+x).toFixed(1);
+const pct=x=>Math.round(x)+'%';
+function profile(p){const q={};for(const i of IDS){const v=p[i];q[i]=v==='t+'?Math.min(G.max,G.th[i]+step()):fromN(v)}return q}
+function newBeh(name,kind,p,epos,eneg){return {name,kind,q:profile(p),start:{epos,eneg},epos,eneg,hist:[]}}
+const beh=()=>B[cur];
+
+/* ---------- diagram ---------- */
+function buildSvg(){
+  const ns='http://www.w3.org/2000/svg';
+  const ga=$('arrows');
+  for(const [k,[d,both]] of Object.entries(ARROWS)){
+    const p=document.createElementNS(ns,'path');p.setAttribute('d',d);p.id='a-'+k;p.setAttribute('class','arr');
+    p.setAttribute('marker-end','url(#mk)');if(both)p.setAttribute('marker-start','url(#mk)');ga.appendChild(p);
+  }
+  const gn=$('nodes');
+  for(const [id,n] of Object.entries(NODES)){
+    const h=n.h||50,g=document.createElementNS(ns,'g');g.setAttribute('class','node');g.id='n-'+id;
+    g.setAttribute('tabindex','0');g.setAttribute('role','button');g.setAttribute('aria-label',byId[id].name+': go to quality setting');
+    g.innerHTML=`<rect class="box" x="${n.x-n.w/2}" y="${n.y-h/2}" width="${n.w}" height="${h}" rx="8"/>`+
+      n.l.map((t,i)=>`<text class="lbl" x="${n.x}" y="${n.y-h/2+19+i*17}" text-anchor="middle">${t}</text>`).join('')+
+      `<text class="val" x="${n.x}" y="${n.y+h/2-8}" text-anchor="middle"></text>`+
+      `<circle class="dot" cx="${n.x+n.w/2-8}" cy="${n.y-h/2+8}" r="3.5"/>`;
+    const go=()=>{const el=$('c-'+id);el.scrollIntoView({block:'center',behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth'});
+      el.classList.add('flash');setTimeout(()=>el.classList.remove('flash'),1200);const r=$('q-'+id);r&&r.focus({preventScroll:true})};
+    g.addEventListener('click',go);g.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();go()}});
+    gn.appendChild(g);
+  }
+}
+function renderNodes(){
+  const b=beh();
+  for(const c of C){
+    const g=$('n-'+c.id),v=b.q[c.id];
+    g.querySelector('.val').textContent=`${f(v)} / ≥${f(G.th[c.id])}`;
+    g.classList.toggle('low',v<G.th[c.id]);
+  }
+}
+function clearMarks(){
+  document.querySelectorAll('.node').forEach(g=>g.classList.remove('pass','fail','now','idle'));
+  document.querySelectorAll('.arr').forEach(a=>{a.classList.remove('lit');a.setAttribute('marker-end','url(#mk)');if(a.hasAttribute('marker-start'))a.setAttribute('marker-start','url(#mk)')});
+}
+function light(keys){keys.forEach(k=>{const a=$('a-'+k);a.classList.add('lit');a.setAttribute('marker-end','url(#mkl)');if(a.hasAttribute('marker-start'))a.setAttribute('marker-start','url(#mkl)')})}
+function setStatus(cls,title,msg){const s=$('status');s.className='status '+cls;s.innerHTML=`<div><b>${title}</b><p>${msg}</p></div>`}
+function show(e){
+  document.querySelectorAll('.node.now').forEach(g=>g.classList.remove('now'));
+  light(e.arrows||[]);
+  if(e.node){const g=$('n-'+e.node);g.classList.remove('pass','fail');g.classList.add(e.st,'now')}
+  if(e.idle)e.idle.forEach(id=>$('n-'+id).classList.add('idle'));
+  setStatus(e.st,e.title,e.msg);
+}
+
+/* ---------- simulation ---------- */
+function buildCycle(){
+  const b=beh(),ev=[],q={...b.q};
+  const rec={n:b.hist.length+1,q,stop:null,epos0:b.epos,eneg0:b.eneg};
+  for(let k=0;k<IDS.length;k++){
+    const id=IDS[k],c=byId[id],v=q[id],t=G.th[id];
+    if(v<t){
+      rec.stop=id;
+      ev.push({node:id,st:'fail',arrows:INTO[id],idle:IDS.slice(k+1),title:`Stopped at ${c.name.toLowerCase()}`,
+        msg:`Quality ${f(v)} is below the threshold of ${f(t)}. ${c.fail} The process stops here and nothing new is learned: expected outcomes stay at ${pct(b.epos)} positive and ${pct(b.eneg)} negative.`});
+      return {ev,rec,apply:null};
+    }
+    ev.push({node:id,st:'pass',arrows:INTO[id],title:c.name,msg:`Quality ${f(v)} reaches the threshold of ${f(t)}. ${c.pass}`});
+  }
+  const Q=IDS.reduce((s,i)=>s+nrm(q[i]),0)/IDS.length, r=0.4*Q*Q;
+  const weakest=IDS.reduce((a,i)=>nrm(q[i])<nrm(q[a])?i:a,IDS[0]);
+  const np=b.epos+r*(100-b.epos), nn=b.eneg-r*b.eneg;
+  Object.assign(rec,{Q,r,weakest,epos1:np,eneg1:nn});
+  const opt=Q>=0.999;
+  ev.push({node:'learn',st:'pass',arrows:['lep'],title:'Cycle complete',
+    msg:`Overall quality ${pct(Q*100)}, so learning strength is ${pct(r*100)}. Expected positive outcomes ${pct(b.epos)} → ${pct(np)}, expected negative outcomes ${pct(b.eneg)} → ${pct(nn)}. `+
+      (opt?'Every element is optimal, so this is the largest possible shift.':`The weakest element is ${byId[weakest].name.toLowerCase()} (${f(q[weakest])}). Raising it would make the shift larger.`)});
+  return {ev,rec,apply:()=>{b.epos=np;b.eneg=nn}};
+}
+function finish(){if(!run||run.done)return;if(run.apply)run.apply();beh().hist.push(run.rec);run.done=true;renderAll()}
+function stepOnce(){
+  if(!run||run.done){clearMarks();run=buildCycle();run.i=0}
+  show(run.ev[run.i++]);
+  if(run.i>=run.ev.length)finish();
+}
+function setBusy(b){$('bStep').disabled=b;$('bTen').disabled=b;$('bCycle').textContent=b?'Pause':'Run cycle'}
+function stopTimer(){clearTimeout(timer);timer=null;setBusy(false)}
+function runCycle(){
+  if(timer){stopTimer();return}
+  if(!run||run.done)stepOnce();
+  if(run.done)return;
+  setBusy(true);
+  const tick=()=>{if(run.done){stopTimer();return}stepOnce();timer=setTimeout(tick,+$('speed').value)};
+  timer=setTimeout(tick,+$('speed').value);
+}
+function runMany(n){
+  stopTimer();
+  if(run&&!run.done)while(!run.done)stepOnce();
+  for(let k=0;k<n;k++){clearMarks();run=buildCycle();run.i=0;if(k===n-1)run.ev.forEach(show);finish()}
+}
+function cancel(note){
+  stopTimer();
+  if(run&&!run.done){run=null;clearMarks();if(note)setStatus('','Cycle cancelled','A setting changed during the cycle. Press Step or Run cycle to start again with the new qualities.')}
+}
+
+/* ---------- controls ---------- */
+const rangeRow=(lbl,id,min,max,st,val,cls='')=>`<label class="row ${cls}" for="${id}"><span>${lbl}</span><input type="range" id="${id}" min="${min}" max="${max}" step="${st}" value="${val}"><output id="${id}-o">${f(val)}</output></label>`;
+function buildCtls(){
+  const b=beh(),st=step();let html='',grp='';
+  for(const c of C){
+    if(c.group!==grp){if(grp)html+='</div>';grp=c.group;html+=`<div class="group"><div class="eyebrow">${grp}</div>`}
+    html+=`<div class="concept" id="c-${c.id}"><div class="top"><span class="name">${c.name}</span><span class="pill" id="p-${c.id}"></span></div><p class="desc">${c.desc}</p>`;
+    html+=rangeRow('Quality','q-'+c.id,1,G.max,st,b.q[c.id]);
+    html+=`<div class="anchors"><span>${c.lo}</span><span>${c.hi}</span></div>`;
+    html+=G.unlock?rangeRow('Threshold','t-'+c.id,1,G.max,st,G.th[c.id],'th'):`<div class="fixed" id="tf-${c.id}">threshold ${f(G.th[c.id])} (fixed)</div>`;
+    html+='</div>';
+  }
+  html+=`</div><div class="group"><div class="eyebrow">Expected outcomes at the start</div><p class="small">Changing these restarts the run for this behaviour.</p>`+
+    rangeRow('Negative','sneg',0,100,1,b.start.eneg)+rangeRow('Positive','spos',0,100,1,b.start.epos)+`</div>`;
+  $('ctls').innerHTML=html;
+  $('ctls').querySelectorAll('input').forEach(i=>i.addEventListener('input',onInput));
+}
+function onInput(e){
+  const id=e.target.id,v=+e.target.value,b=beh();
+  cancel(true);
+  if(id==='sneg'||id==='spos'){b.start[id==='sneg'?'eneg':'epos']=v;resetRun(false)}
+  else if(id.startsWith('q-'))b.q[id.slice(2)]=v;
+  else if(id.startsWith('t-'))G.th[id.slice(2)]=v;
+  renderAll();
+}
+function syncCtls(){
+  const b=beh();
+  for(const c of C){
+    const v=b.q[c.id],t=G.th[c.id],ok=v>=t,qi=$('q-'+c.id);
+    if(document.activeElement!==qi)qi.value=v; $('q-'+c.id+'-o').textContent=f(v);
+    if(G.unlock)$('t-'+c.id+'-o').textContent=f(t);
+    const p=$('p-'+c.id);p.className='pill '+(ok?'ok':'no');p.textContent=ok?`${f(v)} ≥ ${f(t)} passes`:`${f(v)} < ${f(t)} blocks`;
+  }
+  $('sneg-o').textContent=b.start.eneg;$('spos-o').textContent=b.start.epos;
+}
+function renderTabs(){
+  $('tabs').innerHTML=B.map((b,i)=>{
+    const last=b.hist[b.hist.length-1];
+    const st=!b.hist.length?'no cycles yet':`${b.hist.length} cycle${b.hist.length>1?'s':''} · ${pct(b.epos)} pos / ${pct(b.eneg)} neg`;
+    return `<button class="tab" role="tab" aria-selected="${i===cur}" data-i="${i}"><span class="k">${b.kind==='primary'?'Primary behaviour':'Self-control behaviour'}</span><span class="t"></span><span class="st">${st}</span></button>`}).join('');
+  $('tabs').querySelectorAll('.tab').forEach((t,i)=>{t.querySelector('.t').textContent=B[i].name||'(unnamed)';t.onclick=()=>{if(i===cur)return;cancel(false);cur=i;run=null;clearMarks();
+    setStatus('','Behaviour selected',`Now regulating: ${escapeHtml(B[i].name)}. Each behaviour has its own qualities and expected outcomes; thresholds are shared.`);buildCtls();syncName();renderAll()}});
+  $('bDel').disabled=beh().kind==='primary';
+}
+function escapeHtml(s){return s.replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
+function syncName(){$('bname').value=beh().name}
+
+/* ---------- outputs ---------- */
+function renderBars(){
+  const b=beh(),put=(id,v)=>{const el=$(id);el.style.height=Math.max(1.5,v)+'%';el.querySelector('span').textContent=pct(v)};
+  put('b0n',b.start.eneg);put('b0p',b.start.epos);put('b1n',b.eneg);put('b1p',b.epos);
+}
+function renderChart(){
+  const b=beh(),W=520,H=200,L=36,R=12,T=12,BM=40,svg=$('chart'),h=b.hist;
+  const ser=[{p:b.start.epos,n:b.start.eneg},...h.map(r=>({p:r.stop?r.epos0:r.epos1,n:r.stop?r.eneg0:r.eneg1}))];
+  const N=Math.max(ser.length-1,1),x=i=>L+(W-L-R)*i/N,y=v=>T+(H-T-BM)*(1-v/100);
+  let g='';
+  [0,50,100].forEach(v=>g+=`<line class="ax" x1="${L}" x2="${W-R}" y1="${y(v)}" y2="${y(v)}"/><text x="${L-6}" y="${y(v)+4}" text-anchor="end">${v}%</text>`);
+  if(!h.length){svg.innerHTML=g+`<text x="${(W+L)/2}" y="${y(50)-8}" text-anchor="middle">Run a cycle to start plotting</text>`;return}
+  const tick=Math.max(1,Math.ceil(N/10));
+  for(let i=0;i<=N;i+=tick)g+=`<text x="${x(i)}" y="${H-6}" text-anchor="middle">${i}</text>`;
+  h.forEach((r,i)=>g+=`<circle cx="${x(i+1)}" cy="${H-24}" r="4" fill="${r.stop?'var(--fail)':'var(--pass)'}"><title>Cycle ${r.n}: ${r.stop?'stopped at '+byId[r.stop].name:'completed'}</title></circle>`);
+  const line=(fn,col)=>{const d=ser.map((s,i)=>`${i?'L':'M'}${x(i).toFixed(1)} ${y(fn(s)).toFixed(1)}`).join(' '),l=ser.length-1;
+    return `<path d="${d}" fill="none" stroke="${col}" stroke-width="2.4" stroke-linejoin="round"/><circle cx="${x(l)}" cy="${y(fn(ser[l]))}" r="3.5" fill="${col}"/>`};
+  g+=line(s=>s.n,'var(--neg)')+line(s=>s.p,'var(--pos)');
+  svg.innerHTML=g;
+}
+function renderLog(){
+  const ul=$('log'),h=beh().hist;
+  if(!h.length){ul.innerHTML='<li style="display:block" class="small">No cycles yet for this behaviour.</li>';return}
+  ul.innerHTML=h.slice().reverse().map(r=>{
+    const s=r.stop?`<span class="tag no">stopped</span>at ${byId[r.stop].name.toLowerCase()} (${f(r.q[r.stop])} &lt; ${f(G.th[r.stop])}); nothing learned`
+      :`<span class="tag ok">completed</span>quality ${pct(r.Q*100)}, learning ${pct(r.r*100)} · pos ${pct(r.epos0)}→${pct(r.epos1)}, neg ${pct(r.eneg0)}→${pct(r.eneg1)}`+(r.Q<0.999?` · weakest: ${byId[r.weakest].name.toLowerCase()}`:'');
+    return `<li><span class="n">Cycle ${r.n}</span><span>${s}</span></li>`}).join('');
+}
+function renderAll(){renderNodes();syncCtls();renderBars();renderChart();renderLog();renderTabs()}
+
+function resetRun(msg=true){
+  const b=beh();b.epos=b.start.epos;b.eneg=b.start.eneg;b.hist=[];run=null;clearMarks();
+  if(msg)setStatus('','Run reset','Expected outcomes are back at their starting values. The qualities are unchanged.');
+}
+function rescale(nm){
+  const om=G.max,st=nm<=5?0.5:1,r=v=>Math.min(nm,Math.max(1,Math.round((1+(v-1)*(nm-1)/(om-1))/st)*st));
+  for(const i of IDS)G.th[i]=r(G.th[i]);for(const b of B)for(const i of IDS)b.q[i]=r(b.q[i]);G.max=nm;
+}
+
+$('scale').addEventListener('change',e=>{cancel(true);rescale(+e.target.value);buildCtls();renderAll()});
+$('unlock').addEventListener('change',e=>{G.unlock=e.target.checked;buildCtls();renderAll()});
+$('bStep').onclick=()=>{stopTimer();stepOnce()};
+$('bCycle').onclick=runCycle;
+$('bTen').onclick=()=>runMany(10);
+$('bReset').onclick=()=>{stopTimer();resetRun();renderAll()};
+document.querySelectorAll('[data-preset]').forEach(btn=>btn.onclick=()=>{
+  cancel(false);beh().q=profile(PRESETS[btn.dataset.preset]);resetRun(false);
+  setStatus('','Scenario loaded',`“${btn.textContent}” is loaded for ${escapeHtml(beh().name)}, and its run is reset. Press Run cycle or Run 10 cycles.`);
+  renderAll();
+});
+$('bname').addEventListener('input',e=>{beh().name=e.target.value;renderTabs()});
+$('bAdd').onclick=()=>{cancel(false);const n=B.filter(b=>b.kind!=='primary').length+1;
+  B.push(newBeh(`Self-control behaviour ${n}`,'sc',START_SC,30,40));cur=B.length-1;run=null;clearMarks();buildCtls();syncName();renderAll();$('bname').select()};
+$('bDel').onclick=()=>{if(beh().kind==='primary')return;cancel(false);B.splice(cur,1);cur=0;run=null;clearMarks();buildCtls();syncName();renderAll()};
+
+B=[newBeh('Walking 3 × 30 minutes a week','primary',START_PRIMARY,25,75),
+   newBeh('Putting walking shoes by the door the evening before','sc',START_SC,30,40)];
+$('scale').value=G.max;
+buildSvg();buildCtls();syncName();renderAll();
+</script>
